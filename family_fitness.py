@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import date
-from sqlalchemy import create_engine, Column, Integer, String, Float, Date, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Float, Date, ForeignKey, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 # --- 1. PAGE SETUP & MOBILE STYLING ---
@@ -76,6 +76,15 @@ class HabitLogDB(Base):
 
 # Create missing tables safely
 Base.metadata.create_all(bind=engine)
+
+# --- AUTOMATIC SCHEMA MIGRATION ---
+# Dynamically add the 'pin' column to 'profiles' if it was created prior to PIN implementation
+inspector = inspect(engine)
+if "profiles" in inspector.get_table_names():
+    existing_columns = [col["name"] for col in inspector.get_columns("profiles")]
+    if "pin" not in existing_columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE profiles ADD COLUMN pin VARCHAR;"))
 
 # --- 4. HELPER FUNCTIONS ---
 def get_db():
