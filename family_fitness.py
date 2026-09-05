@@ -225,7 +225,16 @@ else:
                 
                 c4.metric("Latest BP", bp_val)
 
-        # TAB 2: VITALS WITH DATE SEARCH
+            # WEIGHT TREND CHART ON OVERVIEW
+            w_history = db.query(WeightLogDB).filter(WeightLogDB.member == member_name).order_by(WeightLogDB.log_date.asc()).all()
+            if w_history:
+                st.write("")
+                st.subheader("📈 Weight Progress Trend")
+                df_w_chart = pd.DataFrame([{"Date": r.log_date, "Weight (kg)": r.weight} for r in w_history])
+                df_w_chart.set_index("Date", inplace=True)
+                st.line_chart(df_w_chart)
+
+        # TAB 2: VITALS WITH CHART & SEARCH
         with tabs[1]:
             st.subheader("🫀 Log Vitals")
             with st.form("vitals_form"):
@@ -243,6 +252,27 @@ else:
                     st.success("Vitals saved!")
                     st.rerun()
 
+            # BLOOD PRESSURE & SUGAR CHARTS
+            v_history = db.query(VitalLogDB).filter(VitalLogDB.member == member_name).order_by(VitalLogDB.log_date.asc()).all()
+            if v_history:
+                st.write("")
+                st.subheader("📈 Blood Pressure & Sugar Trends")
+                df_v_chart = pd.DataFrame([{
+                    "Date": r.log_date, 
+                    "Systolic BP": r.systolic, 
+                    "Diastolic BP": r.diastolic,
+                    "Blood Sugar": r.blood_sugar
+                } for r in v_history])
+                df_v_chart.set_index("Date", inplace=True)
+                
+                c_chart1, c_chart2 = st.columns(2)
+                with c_chart1:
+                    st.caption("Blood Pressure (Systolic vs Diastolic)")
+                    st.line_chart(df_v_chart[["Systolic BP", "Diastolic BP"]])
+                with c_chart2:
+                    st.caption("Blood Sugar Level")
+                    st.line_chart(df_v_chart[["Blood Sugar"]])
+
             st.write("")
             st.subheader("🔍 Search Vital Logs by Date")
             query = db.query(VitalLogDB).filter(VitalLogDB.member == member_name)
@@ -258,7 +288,7 @@ else:
             else:
                 st.info("No vital logs found.")
 
-        # TAB 3: WEIGHT & STEPS
+        # TAB 3: WEIGHT & STEPS WITH CHART
         with tabs[2]:
             st.subheader("⚖️ Log Weight & Step Count")
             with st.form("weight_form"):
@@ -275,6 +305,15 @@ else:
                     st.success("Weight log updated!")
                     st.rerun()
 
+            # STEPS CHART
+            ws_history = db.query(WeightLogDB).filter(WeightLogDB.member == member_name).order_by(WeightLogDB.log_date.asc()).all()
+            if ws_history:
+                st.write("")
+                st.subheader("📈 Daily Step Count")
+                df_ws_chart = pd.DataFrame([{"Date": r.log_date, "Steps": r.steps} for r in ws_history])
+                df_ws_chart.set_index("Date", inplace=True)
+                st.line_chart(df_ws_chart)
+
             st.write("")
             st.subheader("🔍 Search Weight Logs by Date")
             q_ws = db.query(WeightLogDB).filter(WeightLogDB.member == member_name)
@@ -287,7 +326,7 @@ else:
                 df_ws = pd.DataFrame([{"Date": r.log_date, "Weight (kg)": r.weight, "Steps": r.steps} for r in ws_records])
                 st.dataframe(df_ws, use_container_width=True, hide_index=True)
 
-        # TAB 4: DAILY HABITS
+        # TAB 4: DAILY HABITS WITH CHARTS
         with tabs[3]:
             st.subheader("💧 Log Daily Habits")
             with st.form("habit_form"):
@@ -303,6 +342,22 @@ else:
                     db.commit()
                     st.success("Habits logged successfully!")
                     st.rerun()
+
+            # HABIT CHARTS
+            h_history = db.query(HabitLogDB).filter(HabitLogDB.member == member_name).order_by(HabitLogDB.log_date.asc()).all()
+            if h_history:
+                st.write("")
+                st.subheader("📈 Habit Trends over Time")
+                df_h_chart = pd.DataFrame([{"Date": r.log_date, "Water (L)": r.water_l, "Sleep (hrs)": r.sleep_hrs, "Protein (g)": r.protein_g} for r in h_history])
+                df_h_chart.set_index("Date", inplace=True)
+                
+                hc1, hc2 = st.columns(2)
+                with hc1:
+                    st.caption("Water & Sleep Intake")
+                    st.line_chart(df_h_chart[["Water (L)", "Sleep (hrs)"]])
+                with hc2:
+                    st.caption("Daily Protein (g)")
+                    st.line_chart(df_h_chart[["Protein (g)"]])
 
             st.write("")
             st.subheader("🔍 Search Habit Logs by Date")
