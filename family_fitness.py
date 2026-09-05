@@ -87,7 +87,7 @@ def calculate_age(dob):
     return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
 
 AVATAR_URL = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
-DEFAULT_MEMBERS = ["Kush", "Dharmesh", "Kinaree", "Daksha", "Dhaval", "Pallavi", "Charvi", "Parhi"]
+DEFAULT_MEMBERS = ["Kush", "Dharmesh", "Kinaree", "Daksha", "Dhaval", "Pallavi", "Charvi", "Prahi"]
 
 # --- 5. SESSION STATE ---
 if "active_member" not in st.session_state:
