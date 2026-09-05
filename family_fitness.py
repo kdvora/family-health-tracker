@@ -40,45 +40,44 @@ class ProfileDB(Base):
     __tablename__ = "profiles"
     name = Column(String, primary_key=True, index=True)
     pin = Column(String)  # 4-digit security PIN
-    gender = Column(String)
-    dob = Column(Date)
-    height = Column(Float)
-    current_weight = Column(Float)
-    target_weight = Column(Float)
-    diet = Column(String)
+    gender = Column(String, nullable=True)
+    dob = Column(Date, nullable=True)
+    height = Column(Float, nullable=True)
+    current_weight = Column(Float, nullable=True)
+    target_weight = Column(Float, nullable=True)
+    diet = Column(String, nullable=True)
 
 class VitalLogDB(Base):
     __tablename__ = "vitals"
     id = Column(Integer, primary_key=True, autoincrement=True)
     member = Column(String, ForeignKey("profiles.name"))
     log_date = Column(Date)
-    systolic = Column(Integer)
-    diastolic = Column(Integer)
-    blood_sugar = Column(Float)
-    timing = Column(String)
+    systolic = Column(Integer, nullable=True)
+    diastolic = Column(Integer, nullable=True)
+    blood_sugar = Column(Float, nullable=True)
+    timing = Column(String, nullable=True)
 
 class WeightLogDB(Base):
     __tablename__ = "weight_logs"
     id = Column(Integer, primary_key=True, autoincrement=True)
     member = Column(String, ForeignKey("profiles.name"))
     log_date = Column(Date)
-    weight = Column(Float)
-    steps = Column(Integer)
+    weight = Column(Float, nullable=True)
+    steps = Column(Integer, nullable=True)
 
 class HabitLogDB(Base):
     __tablename__ = "habit_logs"
     id = Column(Integer, primary_key=True, autoincrement=True)
     member = Column(String, ForeignKey("profiles.name"))
     log_date = Column(Date)
-    sleep_hrs = Column(Float)
-    water_l = Column(Float)
-    protein_g = Column(Float)
+    sleep_hrs = Column(Float, nullable=True)
+    water_l = Column(Float, nullable=True)
+    protein_g = Column(Float, nullable=True)
 
 # Create missing tables safely
 Base.metadata.create_all(bind=engine)
 
 # --- AUTOMATIC SCHEMA MIGRATION ---
-# Dynamically add the 'pin' column to 'profiles' if it was created prior to PIN implementation
 inspector = inspect(engine)
 if "profiles" in inspector.get_table_names():
     existing_columns = [col["name"] for col in inspector.get_columns("profiles")]
@@ -113,14 +112,14 @@ if st.session_state.active_member is None:
     st.markdown(f"<p class='sub-text'>Select your profile. <i>(Database Mode: {db_source})</i></p>", unsafe_allow_html=True)
     st.divider()
 
-    # If user clicked a profile, show PIN prompt
+    # PIN Prompt / Creation
     if st.session_state.selected_member_auth:
         auth_name = st.session_state.selected_member_auth
         p_rec = db.query(ProfileDB).filter(ProfileDB.name == auth_name).first()
 
         st.subheader(f"🔒 Enter PIN for {auth_name}")
         
-        # If user has no PIN yet (first time setup)
+        # New PIN setup
         if not p_rec or not p_rec.pin:
             st.info("No PIN set for this profile yet. Please set your 4-digit PIN.")
             with st.form("set_pin_form"):
@@ -150,7 +149,7 @@ if st.session_state.active_member is None:
                     st.session_state.selected_member_auth = None
                     st.rerun()
         else:
-            # Existing PIN Verification Prompt
+            # Existing PIN Verification
             with st.form("verify_pin_form"):
                 entered_pin = st.text_input("Enter 4-Digit PIN", type="password", max_chars=4)
                 c1, c2 = st.columns(2)
@@ -168,11 +167,9 @@ if st.session_state.active_member is None:
                     st.rerun()
 
     else:
-        # Load profiles from database
         existing_profiles = {p.name: p for p in db.query(ProfileDB).all()}
         all_names = sorted(list(set(DEFAULT_MEMBERS + list(existing_profiles.keys()))))
         
-        # Grid display
         num_columns = 4
         for i in range(0, len(all_names), num_columns):
             cols = st.columns(num_columns)
@@ -197,11 +194,11 @@ if st.session_state.active_member is None:
         with st.expander("➕ Add New Family Member"):
             with st.form("add_member"):
                 new_name = st.text_input("Member Name", value="")
-                gender_opt = st.selectbox("Biological Sex", ["Male", "Female"], index=None, placeholder="Select Sex...")
+                gender_opt = st.selectbox("Biological Sex (Optional)", ["Male", "Female"], index=None, placeholder="Select Sex...")
                 new_user_pin = st.text_input("Set 4-Digit Security PIN", type="password", max_chars=4)
                 
                 if st.form_submit_button("Add Member"):
-                    if new_name and gender_opt and len(new_user_pin) == 4 and new_user_pin.isdigit():
+                    if new_name and len(new_user_pin) == 4 and new_user_pin.isdigit():
                         if not db.query(ProfileDB).filter(ProfileDB.name == new_name).first():
                             new_p = ProfileDB(name=new_name, gender=gender_opt, pin=new_user_pin)
                             db.add(new_p)
@@ -209,21 +206,19 @@ if st.session_state.active_member is None:
                         st.session_state.active_member = new_name
                         st.rerun()
                     else:
-                        st.error("Please provide name, sex, and a 4-digit numeric PIN.")
+                        st.error("Please provide a name and a 4-digit numeric PIN.")
 
 # --- SCREEN B: ACTIVE MEMBER DASHBOARD ---
 else:
     member_name = st.session_state.active_member
     profile = db.query(ProfileDB).filter(ProfileDB.name == member_name).first()
 
-    # Header Controls
     col_t, col_b = st.columns([5, 1])
     col_t.title(f"📱 {member_name}'s Health Dashboard")
     if col_b.button("🔒 Switch / Lock Member"):
         st.session_state.active_member = None
         st.rerun()
 
-    # --- DELETE PROFILE / ACCOUNT MANAGEMENT ---
     with st.expander("⚙️ Manage Profile & Security / Delete Account"):
         st.markdown("#### 🔒 Update Security PIN")
         with st.form("change_pin_form"):
@@ -248,16 +243,11 @@ else:
         
         if st.button(f"🗑️ Delete {member_name}'s Profile", type="primary", disabled=not confirm):
             if profile and profile.pin == delete_pin:
-                # 1. Delete all associated logs
                 db.query(VitalLogDB).filter(VitalLogDB.member == member_name).delete()
                 db.query(WeightLogDB).filter(WeightLogDB.member == member_name).delete()
                 db.query(HabitLogDB).filter(HabitLogDB.member == member_name).delete()
-                
-                # 2. Delete profile
                 db.delete(profile)
                 db.commit()
-                
-                # 3. Reset session
                 st.session_state.active_member = None
                 st.success(f"Profile for {member_name} has been completely deleted.")
                 st.rerun()
@@ -266,53 +256,41 @@ else:
 
     st.divider()
 
-    # ONBOARDING / PROFILE SETUP FORM (FIELDS INITIALLY EMPTY)
+    # ONBOARDING / PROFILE SETUP FORM (ALL FIELDS ACCEPT EMPTY/NULL VALUES)
     if not profile or not profile.dob:
-        st.info("👋 Welcome! Please complete your initial health profile setup.")
+        st.info("👋 Welcome! Optional: Set up your profile metrics below or skip and fill later.")
         with st.form("setup_form"):
-            dob = st.date_input("Date of Birth", value=None)
-            st.caption("💡 Used to accurately track age-related baseline targets.")
-            
-            height = st.number_input("Height (cm)", value=None, placeholder="e.g. 170.0")
-            st.caption("💡 Recommended: Average adult ranges between 150 - 185 cm.")
-            
-            weight = st.number_input("Current Weight (kg)", value=None, placeholder="e.g. 70.0")
-            st.caption("💡 Recommended: Input current scale reading.")
-            
-            target = st.number_input("Target Weight (kg)", value=None, placeholder="e.g. 65.0")
-            st.caption("💡 Recommended target: Calculated based on healthy BMI range (~18.5 - 24.9).")
-            
-            gender = st.selectbox("Sex", ["Male", "Female"], index=None, placeholder="Select Sex...")
-            diet = st.selectbox("Diet Preference", ["Vegetarian", "Non-Vegetarian", "Vegan", "Eggetarian"], index=None, placeholder="Select Diet...")
+            dob = st.date_input("Date of Birth (Optional)", value=None)
+            height = st.number_input("Height (cm) (Optional)", value=None, placeholder="e.g. 170.0")
+            weight = st.number_input("Current Weight (kg) (Optional)", value=None, placeholder="e.g. 70.0")
+            target = st.number_input("Target Weight (kg) (Optional)", value=None, placeholder="e.g. 65.0")
+            gender = st.selectbox("Sex (Optional)", ["Male", "Female"], index=None, placeholder="Select Sex...")
+            diet = st.selectbox("Diet Preference (Optional)", ["Vegetarian", "Non-Vegetarian", "Vegan", "Eggetarian"], index=None, placeholder="Select Diet...")
             
             if st.form_submit_button("Save Setup"):
-                if dob and height and weight and target and gender and diet:
-                    if not profile:
-                        profile = ProfileDB(name=member_name)
-                        db.add(profile)
-                    profile.dob = dob
-                    profile.height = height
-                    profile.current_weight = weight
-                    profile.target_weight = target
-                    profile.gender = gender
-                    profile.diet = diet
-                    db.commit()
-                    st.success("Profile setup complete!")
-                    st.rerun()
-                else:
-                    st.error("Please fill in all profile fields before saving.")
+                if not profile:
+                    profile = ProfileDB(name=member_name)
+                    db.add(profile)
+                profile.dob = dob
+                profile.height = height
+                profile.current_weight = weight
+                profile.target_weight = target
+                profile.gender = gender
+                profile.diet = diet
+                db.commit()
+                st.success("Profile updated!")
+                st.rerun()
     else:
-        # Dynamic recommended protein calculation based on profile weight (1g per kg)
         rec_protein = round(profile.current_weight * 1.0, 1) if profile.current_weight else 60.0
 
         tabs = st.tabs(["📊 Overview & Goals", "🫀 Vitals", "⚖️ Weight & Steps", "💧 Daily Habits"])
 
-        # TAB 1: METRICS & GOALS SNAPSHOT
+        # TAB 1: OVERVIEW & GOALS
         with tabs[0]:
             st.subheader("🎯 Target Weight & Progress")
             
             latest_vital = db.query(VitalLogDB).filter(VitalLogDB.member == member_name).order_by(VitalLogDB.log_date.desc()).first()
-            bp_val = f"{latest_vital.systolic}/{latest_vital.diastolic}" if latest_vital else "No records"
+            bp_val = f"{latest_vital.systolic}/{latest_vital.diastolic}" if (latest_vital and latest_vital.systolic and latest_vital.diastolic) else "No records"
 
             cur_w = profile.current_weight or 0.0
             tgt_w = profile.target_weight or 0.0
@@ -335,8 +313,7 @@ else:
                 
                 c4.metric("Latest BP", bp_val)
 
-            # WEIGHT TREND CHART
-            w_history = db.query(WeightLogDB).filter(WeightLogDB.member == member_name).order_by(WeightLogDB.log_date.asc()).all()
+            w_history = db.query(WeightLogDB).filter(WeightLogDB.member == member_name, WeightLogDB.weight.isnot(None)).order_by(WeightLogDB.log_date.asc()).all()
             if w_history:
                 st.write("")
                 st.subheader("📈 Weight Progress Trend")
@@ -344,7 +321,7 @@ else:
                 df_w_chart.set_index("Date", inplace=True)
                 st.line_chart(df_w_chart)
 
-        # TAB 2: VITALS (FIELDS INITIALLY EMPTY)
+        # TAB 2: VITALS (ACCEPTS EMPTY/NULL FIELDS)
         with tabs[1]:
             st.subheader("🫀 Log Vitals")
             with st.form("vitals_form"):
@@ -352,33 +329,28 @@ else:
                 
                 with cv1:
                     v_date = st.date_input("Log Date", value=date.today())
-                    st.caption("💡 Recommended: Log daily at same time.")
 
                 with cv2:
-                    sys_bp = st.number_input("Systolic BP", value=None, placeholder="e.g. 120")
-                    st.caption("💡 **Target:** Below 120 mmHg *(Normal: 90–120)*")
+                    sys_bp = st.number_input("Systolic BP (Optional)", value=None, placeholder="e.g. 120")
 
                 with cv3:
-                    dia_bp = st.number_input("Diastolic BP", value=None, placeholder="e.g. 80")
-                    st.caption("💡 **Target:** Below 80 mmHg *(Normal: 60–80)*")
+                    dia_bp = st.number_input("Diastolic BP (Optional)", value=None, placeholder="e.g. 80")
 
                 with cv4:
-                    sugar = st.number_input("Blood Sugar (mg/dL)", value=None, placeholder="e.g. 95.0")
-                    st.caption("💡 **Fasting:** 70–99 mg/dL | **Post-Meal:** <140 mg/dL")
+                    sugar = st.number_input("Blood Sugar (mg/dL) (Optional)", value=None, placeholder="e.g. 95.0")
 
-                timing = st.radio("Context", ["Fasting", "Post-Meal", "Random"], index=None, horizontal=True)
+                timing = st.radio("Context (Optional)", ["Fasting", "Post-Meal", "Random"], index=None, horizontal=True)
 
                 if st.form_submit_button("Save Vitals"):
-                    if sys_bp and dia_bp and sugar and timing:
+                    if sys_bp is not None or dia_bp is not None or sugar is not None or timing is not None:
                         log = VitalLogDB(member=member_name, log_date=v_date, systolic=sys_bp, diastolic=dia_bp, blood_sugar=sugar, timing=timing)
                         db.add(log)
                         db.commit()
                         st.success("Vitals saved!")
                         st.rerun()
                     else:
-                        st.error("Please fill in all vital fields before saving.")
+                        st.warning("Please fill at least one metric to save a log entry.")
 
-            # BLOOD PRESSURE & SUGAR CHARTS
             v_history = db.query(VitalLogDB).filter(VitalLogDB.member == member_name).order_by(VitalLogDB.log_date.asc()).all()
             if v_history:
                 st.write("")
@@ -409,12 +381,10 @@ else:
             
             records = query.order_by(VitalLogDB.log_date.desc()).all()
             if records:
-                df = pd.DataFrame([{"Date": r.log_date, "BP": f"{r.systolic}/{r.diastolic}", "Sugar": r.blood_sugar, "Timing": r.timing} for r in records])
+                df = pd.DataFrame([{"Date": r.log_date, "BP": f"{r.systolic or '--'}/{r.diastolic or '--'}", "Sugar": r.blood_sugar or '--', "Timing": r.timing or '--'} for r in records])
                 st.dataframe(df, use_container_width=True, hide_index=True)
-            else:
-                st.info("No vital logs found.")
 
-        # TAB 3: WEIGHT & STEPS (FIELDS INITIALLY EMPTY)
+        # TAB 3: WEIGHT & STEPS (ACCEPTS EMPTY/NULL FIELDS)
         with tabs[2]:
             st.subheader("⚖️ Log Weight & Step Count")
             with st.form("weight_form"):
@@ -422,29 +392,26 @@ else:
                 
                 with cw1:
                     w_date = st.date_input("Date", value=date.today())
-                    st.caption("💡 Recommended: Weigh morning before breakfast.")
 
                 with cw2:
-                    w_val = st.number_input("Weight (kg)", value=None, placeholder="e.g. 70.0")
-                    st.caption(f"💡 **Target Weight:** {profile.target_weight or '--'} kg")
+                    w_val = st.number_input("Weight (kg) (Optional)", value=None, placeholder="e.g. 70.0")
 
                 with cw3:
-                    s_val = st.number_input("Steps Walked", value=None, placeholder="e.g. 8000")
-                    st.caption("💡 **Target:** 8,000–10,000 steps/day *(WHO recommended)*")
+                    s_val = st.number_input("Steps Walked (Optional)", value=None, placeholder="e.g. 8000")
 
                 if st.form_submit_button("Save Entry"):
-                    if w_val and s_val:
+                    if w_val is not None or s_val is not None:
                         log = WeightLogDB(member=member_name, log_date=w_date, weight=w_val, steps=s_val)
                         db.add(log)
-                        profile.current_weight = w_val
+                        if w_val is not None:
+                            profile.current_weight = w_val
                         db.commit()
-                        st.success("Weight log updated!")
+                        st.success("Entry updated!")
                         st.rerun()
                     else:
-                        st.error("Please enter both weight and steps.")
+                        st.warning("Please enter either weight or steps to save.")
 
-            # STEPS CHART
-            ws_history = db.query(WeightLogDB).filter(WeightLogDB.member == member_name).order_by(WeightLogDB.log_date.asc()).all()
+            ws_history = db.query(WeightLogDB).filter(WeightLogDB.member == member_name, WeightLogDB.steps.isnot(None)).order_by(WeightLogDB.log_date.asc()).all()
             if ws_history:
                 st.write("")
                 st.subheader("📈 Daily Step Count")
@@ -461,10 +428,10 @@ else:
             
             ws_records = q_ws.order_by(WeightLogDB.log_date.desc()).all()
             if ws_records:
-                df_ws = pd.DataFrame([{"Date": r.log_date, "Weight (kg)": r.weight, "Steps": r.steps} for r in ws_records])
+                df_ws = pd.DataFrame([{"Date": r.log_date, "Weight (kg)": r.weight or '--', "Steps": r.steps or '--'} for r in ws_records])
                 st.dataframe(df_ws, use_container_width=True, hide_index=True)
 
-        # TAB 4: DAILY HABITS (FIELDS INITIALLY EMPTY)
+        # TAB 4: DAILY HABITS (ACCEPTS EMPTY/NULL FIELDS)
         with tabs[3]:
             st.subheader("💧 Log Daily Habits")
             with st.form("habit_form"):
@@ -472,31 +439,26 @@ else:
                 
                 with ch1:
                     h_date = st.date_input("Date", value=date.today())
-                    st.caption("💡 Recommended: Log nightly.")
 
                 with ch2:
-                    sleep = st.number_input("Sleep (hrs)", value=None, placeholder="e.g. 7.5")
-                    st.caption("💡 **Target:** 7.0–9.0 hours/night")
+                    sleep = st.number_input("Sleep (hrs) (Optional)", value=None, placeholder="e.g. 7.5")
 
                 with ch3:
-                    water = st.number_input("Water Intake (L)", value=None, placeholder="e.g. 2.5")
-                    st.caption("💡 **Target:** 2.5–3.5 Liters/day")
+                    water = st.number_input("Water Intake (L) (Optional)", value=None, placeholder="e.g. 2.5")
 
                 with ch4:
-                    prot = st.number_input("Protein Intake (g)", value=None, placeholder=f"e.g. {rec_protein}")
-                    st.caption(f"💡 **Target:** ~{rec_protein} g/day *(1g per kg body weight)*")
+                    prot = st.number_input("Protein Intake (g) (Optional)", value=None, placeholder=f"e.g. {rec_protein}")
 
                 if st.form_submit_button("Save Habits"):
-                    if sleep and water and prot:
+                    if sleep is not None or water is not None or prot is not None:
                         log = HabitLogDB(member=member_name, log_date=h_date, sleep_hrs=sleep, water_l=water, protein_g=prot)
                         db.add(log)
                         db.commit()
                         st.success("Habits logged successfully!")
                         st.rerun()
                     else:
-                        st.error("Please fill in all habit fields before saving.")
+                        st.warning("Please enter at least one habit metric to save.")
 
-            # HABIT CHARTS
             h_history = db.query(HabitLogDB).filter(HabitLogDB.member == member_name).order_by(HabitLogDB.log_date.asc()).all()
             if h_history:
                 st.write("")
@@ -521,7 +483,7 @@ else:
                 
             h_records = q_h.order_by(HabitLogDB.log_date.desc()).all()
             if h_records:
-                df_h = pd.DataFrame([{"Date": r.log_date, "Sleep (hrs)": r.sleep_hrs, "Water (L)": r.water_l, "Protein (g)": r.protein_g} for r in h_records])
+                df_h = pd.DataFrame([{"Date": r.log_date, "Sleep (hrs)": r.sleep_hrs or '--', "Water (L)": r.water_l or '--', "Protein (g)": r.protein_g or '--'} for r in h_records])
                 st.dataframe(df_h, use_container_width=True, hide_index=True)
 
 db.close()
