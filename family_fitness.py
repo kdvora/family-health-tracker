@@ -40,6 +40,7 @@ class ProfileDB(Base):
     __tablename__ = "profiles"
     name = Column(String, primary_key=True, index=True)
     pin = Column(String)  # 4-digit security PIN
+    avatar_url = Column(String, nullable=True)  # Profile picture URL
     gender = Column(String, nullable=True)
     dob = Column(Date, nullable=True)
     height = Column(Float, nullable=True)
@@ -84,6 +85,9 @@ if "profiles" in inspector.get_table_names():
     if "pin" not in existing_columns:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE profiles ADD COLUMN pin VARCHAR;"))
+    if "avatar_url" not in existing_columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE profiles ADD COLUMN avatar_url VARCHAR;"))
 
 # --- 4. HELPER FUNCTIONS ---
 def get_db():
@@ -95,8 +99,15 @@ def calculate_age(dob):
     today = date.today()
     return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
 
-AVATAR_URL = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
-DEFAULT_MEMBERS = ["Kush", "Dharmesh", "Kinaree", "Daksha", "Dhaval", "Pallavi", "Charvi", "Prahi"]
+DEFAULT_AVATAR = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
+AVATAR_PRESETS = [
+    "https://cdn-icons-png.flaticon.com/512/3135/3135715.png",
+    "https://cdn-icons-png.flaticon.com/512/4140/4140048.png",
+    "https://cdn-icons-png.flaticon.com/512/4140/4140047.png",
+    "https://cdn-icons-png.flaticon.com/512/4140/4140061.png",
+    "https://cdn-icons-png.flaticon.com/512/4140/4140037.png",
+]
+DEFAULT_MEMBERS = ["Kush", "Dharmesh", "Kinaree", "Daksha", "Dhaval", "Pallavi", "Charvi", "Parhi"]
 
 # --- 5. SESSION STATE ---
 if "active_member" not in st.session_state:
@@ -177,7 +188,8 @@ if st.session_state.active_member is None:
                 with cols[idx]:
                     with st.container(border=True):
                         prof = existing_profiles.get(name)
-                        st.image(AVATAR_URL, width=65)
+                        avatar = prof.avatar_url if (prof and prof.avatar_url) else DEFAULT_AVATAR
+                        st.image(avatar, width=65)
                         st.markdown(f"### {name}")
                         
                         if prof and prof.dob:
@@ -195,12 +207,13 @@ if st.session_state.active_member is None:
             with st.form("add_member"):
                 new_name = st.text_input("Member Name", value="")
                 gender_opt = st.selectbox("Biological Sex (Optional)", ["Male", "Female"], index=None, placeholder="Select Sex...")
+                new_avatar = st.text_input("Profile Image URL (Optional)", value="", placeholder="https://example.com/photo.png")
                 new_user_pin = st.text_input("Set 4-Digit Security PIN", type="password", max_chars=4)
                 
                 if st.form_submit_button("Add Member"):
                     if new_name and len(new_user_pin) == 4 and new_user_pin.isdigit():
                         if not db.query(ProfileDB).filter(ProfileDB.name == new_name).first():
-                            new_p = ProfileDB(name=new_name, gender=gender_opt, pin=new_user_pin)
+                            new_p = ProfileDB(name=new_name, gender=gender_opt, pin=new_user_pin, avatar_url=new_avatar or DEFAULT_AVATAR)
                             db.add(new_p)
                             db.commit()
                         st.session_state.active_member = new_name
@@ -214,12 +227,49 @@ else:
     profile = db.query(ProfileDB).filter(ProfileDB.name == member_name).first()
 
     col_t, col_b = st.columns([5, 1])
+    current_avatar = profile.avatar_url if (profile and profile.avatar_url) else DEFAULT_AVATAR
+    col_t.image(current_avatar, width=50)
     col_t.title(f"📱 {member_name}'s Health Dashboard")
     if col_b.button("🔒 Switch / Lock Member"):
         st.session_state.active_member = None
         st.rerun()
 
-    with st.expander("⚙️ Manage Profile & Security / Delete Account"):
+    # --- EDIT PROFILE & SECURITY SETTINGS ---
+    with st.expander("⚙️ Edit Profile Details & Security / Delete Account"):
+        st.markdown("#### ✏️ Edit Profile Details & Picture")
+        with st.form("edit_profile_form"):
+            e_dob = st.date_input("Birthday / Date of Birth", value=profile.dob if (profile and profile.dob) else None)
+            e_height = st.number_input("Height (cm)", value=profile.height if (profile and profile.height) else None, placeholder="e.g. 170.0")
+            e_cur_weight = st.number_input("Current Weight (kg)", value=profile.current_weight if (profile and profile.current_weight) else None, placeholder="e.g. 70.0")
+            e_target_weight = st.number_input("Target Weight (kg)", value=profile.target_weight if (profile and profile.target_weight) else None, placeholder="e.g. 65.0")
+            
+            sex_index = ["Male", "Female"].index(profile.gender) if (profile and profile.gender in ["Male", "Female"]) else None
+            e_gender = st.selectbox("Biological Sex", ["Male", "Female"], index=sex_index, placeholder="Select Sex...")
+            
+            diet_options = ["Vegetarian", "Non-Vegetarian", "Vegan", "Eggetarian"]
+            diet_index = diet_options.index(profile.diet) if (profile and profile.diet in diet_options) else None
+            e_diet = st.selectbox("Diet Preference", diet_options, index=diet_index, placeholder="Select Diet...")
+            
+            st.markdown("##### 🖼️ Profile Picture")
+            e_avatar_url = st.text_input("Custom Image URL", value=profile.avatar_url if (profile and profile.avatar_url) else "", placeholder="https://example.com/my-photo.jpg")
+            
+            if st.form_submit_button("Save Profile Changes"):
+                if not profile:
+                    profile = ProfileDB(name=member_name)
+                    db.add(profile)
+                profile.dob = e_dob
+                profile.height = e_height
+                profile.current_weight = e_cur_weight
+                profile.target_weight = e_target_weight
+                profile.gender = e_gender
+                profile.diet = e_diet
+                if e_avatar_url:
+                    profile.avatar_url = e_avatar_url
+                db.commit()
+                st.success("Profile updated successfully!")
+                st.rerun()
+
+        st.divider()
         st.markdown("#### 🔒 Update Security PIN")
         with st.form("change_pin_form"):
             curr_pin_check = st.text_input("Current PIN", type="password", max_chars=4)
@@ -256,7 +306,7 @@ else:
 
     st.divider()
 
-    # ONBOARDING / PROFILE SETUP FORM (ALL FIELDS ACCEPT EMPTY/NULL VALUES)
+    # INITIAL SETUP FORM IF DOB IS NOT YET SAVED
     if not profile or not profile.dob:
         st.info("👋 Welcome! Optional: Set up your profile metrics below or skip and fill later.")
         with st.form("setup_form"):
@@ -321,7 +371,7 @@ else:
                 df_w_chart.set_index("Date", inplace=True)
                 st.line_chart(df_w_chart)
 
-        # TAB 2: VITALS (ACCEPTS EMPTY/NULL FIELDS)
+        # TAB 2: VITALS
         with tabs[1]:
             st.subheader("🫀 Log Vitals")
             with st.form("vitals_form"):
@@ -384,7 +434,7 @@ else:
                 df = pd.DataFrame([{"Date": r.log_date, "BP": f"{r.systolic or '--'}/{r.diastolic or '--'}", "Sugar": r.blood_sugar or '--', "Timing": r.timing or '--'} for r in records])
                 st.dataframe(df, use_container_width=True, hide_index=True)
 
-        # TAB 3: WEIGHT & STEPS (ACCEPTS EMPTY/NULL FIELDS)
+        # TAB 3: WEIGHT & STEPS
         with tabs[2]:
             st.subheader("⚖️ Log Weight & Step Count")
             with st.form("weight_form"):
@@ -431,7 +481,7 @@ else:
                 df_ws = pd.DataFrame([{"Date": r.log_date, "Weight (kg)": r.weight or '--', "Steps": r.steps or '--'} for r in ws_records])
                 st.dataframe(df_ws, use_container_width=True, hide_index=True)
 
-        # TAB 4: DAILY HABITS (ACCEPTS EMPTY/NULL FIELDS)
+        # TAB 4: DAILY HABITS
         with tabs[3]:
             st.subheader("💧 Log Daily Habits")
             with st.form("habit_form"):
