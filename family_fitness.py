@@ -100,14 +100,11 @@ def calculate_age(dob):
     return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
 
 DEFAULT_AVATAR = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
-AVATAR_PRESETS = [
-    "https://cdn-icons-png.flaticon.com/512/3135/3135715.png",
-    "https://cdn-icons-png.flaticon.com/512/4140/4140048.png",
-    "https://cdn-icons-png.flaticon.com/512/4140/4140047.png",
-    "https://cdn-icons-png.flaticon.com/512/4140/4140061.png",
-    "https://cdn-icons-png.flaticon.com/512/4140/4140037.png",
-]
-DEFAULT_MEMBERS = ["Kush", "Dharmesh", "Kinaree", "Daksha", "Dhaval", "Pallavi", "Charvi", "Parhi"]
+DEFAULT_MEMBERS = ["Kush", "Dharmesh", "Kinaree", "Daksha", "Dhaval", "Pallavi", "Charvi", "Prahi"]
+
+# Date boundaries for birthday selection
+MIN_DOB = date(1900, 1, 1)
+MAX_DOB = date.today()
 
 # --- 5. SESSION STATE ---
 if "active_member" not in st.session_state:
@@ -123,14 +120,12 @@ if st.session_state.active_member is None:
     st.markdown(f"<p class='sub-text'>Select your profile. <i>(Database Mode: {db_source})</i></p>", unsafe_allow_html=True)
     st.divider()
 
-    # PIN Prompt / Creation
     if st.session_state.selected_member_auth:
         auth_name = st.session_state.selected_member_auth
         p_rec = db.query(ProfileDB).filter(ProfileDB.name == auth_name).first()
 
         st.subheader(f"🔒 Enter PIN for {auth_name}")
         
-        # New PIN setup
         if not p_rec or not p_rec.pin:
             st.info("No PIN set for this profile yet. Please set your 4-digit PIN.")
             with st.form("set_pin_form"):
@@ -160,7 +155,6 @@ if st.session_state.active_member is None:
                     st.session_state.selected_member_auth = None
                     st.rerun()
         else:
-            # Existing PIN Verification
             with st.form("verify_pin_form"):
                 entered_pin = st.text_input("Enter 4-Digit PIN", type="password", max_chars=4)
                 c1, c2 = st.columns(2)
@@ -238,7 +232,8 @@ else:
     with st.expander("⚙️ Edit Profile Details & Security / Delete Account"):
         st.markdown("#### ✏️ Edit Profile Details & Picture")
         with st.form("edit_profile_form"):
-            e_dob = st.date_input("Birthday / Date of Birth", value=profile.dob if (profile and profile.dob) else None)
+            initial_dob = profile.dob if (profile and profile.dob) else date(2000, 1, 1)
+            e_dob = st.date_input("Birthday / Date of Birth", value=initial_dob, min_value=MIN_DOB, max_value=MAX_DOB)
             e_height = st.number_input("Height (cm)", value=profile.height if (profile and profile.height) else None, placeholder="e.g. 170.0")
             e_cur_weight = st.number_input("Current Weight (kg)", value=profile.current_weight if (profile and profile.current_weight) else None, placeholder="e.g. 70.0")
             e_target_weight = st.number_input("Target Weight (kg)", value=profile.target_weight if (profile and profile.target_weight) else None, placeholder="e.g. 65.0")
@@ -310,7 +305,7 @@ else:
     if not profile or not profile.dob:
         st.info("👋 Welcome! Optional: Set up your profile metrics below or skip and fill later.")
         with st.form("setup_form"):
-            dob = st.date_input("Date of Birth (Optional)", value=None)
+            dob = st.date_input("Date of Birth (Optional)", value=date(2001, 9, 12), min_value=MIN_DOB, max_value=MAX_DOB)
             height = st.number_input("Height (cm) (Optional)", value=None, placeholder="e.g. 170.0")
             weight = st.number_input("Current Weight (kg) (Optional)", value=None, placeholder="e.g. 70.0")
             target = st.number_input("Target Weight (kg) (Optional)", value=None, placeholder="e.g. 65.0")
