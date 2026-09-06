@@ -1,13 +1,12 @@
 import base64
 import hashlib
 import io
-import re
 from datetime import date
 import pandas as pd
 from PIL import Image
 import streamlit as st
 from sqlalchemy import Column, Date, Float, ForeignKey, Integer, String, create_engine, inspect, text
-from sqlalchemy.orm import declarative_base, relationship, sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 # --- 1. PAGE SETUP & STYLING ---
 st.set_page_config(page_title="Family Health & Fitness", page_icon="🏋️‍♂️", layout="wide")
@@ -263,8 +262,15 @@ try:
         member_name = st.session_state.active_member
         profile = db.query(ProfileDB).filter(ProfileDB.name == member_name).first()
 
+        # ENSURE PROFILE RECORD EXISTS IN DATABASE
+        if not profile:
+            profile = ProfileDB(name=member_name, pin=hash_pin("0000"), avatar_url=DEFAULT_AVATAR)
+            db.add(profile)
+            db.commit()
+            db.refresh(profile)
+
         col_t, col_b = st.columns([5, 1])
-        current_avatar = profile.avatar_url if (profile and profile.avatar_url) else DEFAULT_AVATAR
+        current_avatar = profile.avatar_url if profile.avatar_url else DEFAULT_AVATAR
         col_t.image(current_avatar, width=50)
         col_t.title(f"{member_name}'s Dashboard")
         if col_b.button("🔒 Lock / Switch"):
@@ -275,25 +281,22 @@ try:
         with st.expander("⚙️ Account Settings & Security"):
             st.markdown("#### ✏️ Profile Information")
             with st.form("edit_profile_form"):
-                e_dob = st.date_input("Date of Birth", value=profile.dob if (profile and profile.dob) else None)
-                e_height = st.number_input("Height (cm)", value=profile.height if (profile and profile.height) else None)
-                e_cur_weight = st.number_input("Current Weight (kg)", value=profile.current_weight if (profile and profile.current_weight) else None)
-                e_target_weight = st.number_input("Target Weight (kg)", value=profile.target_weight if (profile and profile.target_weight) else None)
+                e_dob = st.date_input("Date of Birth", value=profile.dob)
+                e_height = st.number_input("Height (cm)", value=profile.height)
+                e_cur_weight = st.number_input("Current Weight (kg)", value=profile.current_weight)
+                e_target_weight = st.number_input("Target Weight (kg)", value=profile.target_weight)
                 
-                sex_index = ["Male", "Female"].index(profile.gender) if (profile and profile.gender in ["Male", "Female"]) else None
+                sex_index = ["Male", "Female"].index(profile.gender) if profile.gender in ["Male", "Female"] else None
                 e_gender = st.selectbox("Biological Sex", ["Male", "Female"], index=sex_index)
                 
                 diet_options = ["Vegetarian", "Non-Vegetarian", "Vegan", "Eggetarian"]
-                diet_index = diet_options.index(profile.diet) if (profile and profile.diet in diet_options) else None
+                diet_index = diet_options.index(profile.diet) if profile.diet in diet_options else None
                 e_diet = st.selectbox("Dietary Preference", diet_options, index=diet_index)
                 
                 e_uploaded_img = st.file_uploader("Upload New Profile Picture", type=["png", "jpg", "jpeg", "webp"])
-                e_avatar_url = st.text_input("OR Custom Avatar Image URL", value=profile.avatar_url if (profile and profile.avatar_url) else "")
+                e_avatar_url = st.text_input("OR Custom Avatar Image URL", value=profile.avatar_url or "")
                 
                 if st.form_submit_button("Save Profile Settings"):
-                    if not profile:
-                        profile = ProfileDB(name=member_name, pin=hash_pin("0000"))
-                        db.add(profile)
                     profile.dob = e_dob
                     profile.height = e_height
                     profile.current_weight = e_cur_weight
@@ -316,7 +319,7 @@ try:
                 curr_pin_check = st.text_input("Current PIN", type="password", max_chars=4)
                 updated_pin = st.text_input("New 4-Digit PIN", type="password", max_chars=4)
                 if st.form_submit_button("Update PIN"):
-                    if profile and hash_pin(curr_pin_check) == profile.pin:
+                    if hash_pin(curr_pin_check) == profile.pin:
                         if len(updated_pin) == 4 and updated_pin.isdigit():
                             profile.pin = hash_pin(updated_pin)
                             db.commit()
@@ -332,7 +335,7 @@ try:
             delete_pin = st.text_input("Enter 4-digit PIN to confirm deletion", type="password", max_chars=4)
             
             if st.button("🗑️ Delete Profile Permanently", type="primary", disabled=not confirm):
-                if profile and hash_pin(delete_pin) == profile.pin:
+                if hash_pin(delete_pin) == profile.pin:
                     db.query(VitalLogDB).filter(VitalLogDB.member == member_name).delete()
                     db.query(WeightLogDB).filter(WeightLogDB.member == member_name).delete()
                     db.query(HabitLogDB).filter(HabitLogDB.member == member_name).delete()
@@ -436,7 +439,7 @@ try:
                     if w_val or s_val:
                         log = WeightLogDB(member=member_name, log_date=w_date, weight=w_val, steps=s_val)
                         db.add(log)
-                        if w_val and profile:
+                        if w_val:
                             profile.current_weight = w_val
                         db.commit()
                         st.success("Weight and activity recorded!")
